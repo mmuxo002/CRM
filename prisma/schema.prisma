@@ -1,0 +1,729 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("USER") // ADMIN, APPS_DEV, CRM_DEV, SALES
+  teamId        String?   // APPS, CRM, SALES, GLOBAL
+  title         String?
+  passwordHash       String?
+  mustResetPassword  Boolean  @default(false)
+  accessDepartments  String   @default("all") // comma-sep: "development,crm,sales,marketing" or "all"
+  isActive           Boolean  @default(true)
+  invitedById        String?
+  invitedBy          User?    @relation("UserInvites", fields: [invitedById], references: [id])
+  invites            User[]   @relation("UserInvites")
+  invitedAt          DateTime?
+  lastSeenAt         DateTime?
+  accounts      Account[]
+  sessions      Session[]
+  tasks         Task[]    @relation("AssignedTasks")
+  leads         Lead[]    @relation("AssignedLeads")
+  uploadedFiles FileAsset[] @relation("UploadedFiles")
+  comments      Comment[]
+  activities    Activity[]
+  ownedProjects Project[] @relation("ProjectOwner")
+  managedProjects Project[] @relation("ProjectManager")
+  campaigns     Campaign[] @relation("CampaignOwner")
+  ownedMeetings Meeting[]  @relation("MeetingOwner")
+  meetings      Meeting[]  @relation("MeetingAttendees")
+  createdSalesProjects SalesProject[] @relation("CreatedSalesProjects")
+  claimedLeads         LeadClaim[]    @relation("ClaimedLeads")
+  createdProposals     Proposal[]     @relation("CreatedProposals")
+  sentIntroOffers      IntroOffer[]   @relation("SentIntroOffers")
+  workSessions         WorkSession[]  @relation("UserWorkSessions")
+  commissions          Commission[]   @relation("UserCommissions")
+  createdCommissions   Commission[]   @relation("CreatedCommissions")
+  updatedPricings      ServicePricing[] @relation("UpdatedPricing")
+  updatedRates         CommissionRate[] @relation("UpdatedRates")
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Company {
+  id         String    @id @default(cuid())
+  name       String
+  industry   String?
+  website    String?
+  phone      String?
+  email      String?
+  address    String?
+  logoUrl    String?
+  revenue    String?
+  employees  String?
+  headquarters String?
+  createdAt  DateTime  @default(now())
+  contacts   Contact[]
+  projects   Project[]
+  deals      Deal[]
+  leads      Lead[]
+  invoices   Invoice[]
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  name       String
+  email      String?
+  phone      String?
+  title      String?
+  avatarUrl  String?
+  isPrimary  Boolean  @default(false)
+  status     String   @default("LEAD") // LEAD, PROSPECT, CLIENT
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id])
+  campaignTags CampaignTag[] @relation("ContactCampaignTags")
+  commissions  Commission[]
+  createdAt  DateTime @default(now())
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  teamId      String   @default("GLOBAL") // APPS, CRM, SALES, GLOBAL
+  stage       String   @default("SALES") // SALES, APPS_DEV, CRM_DEV, QA, LIVE
+  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH
+  categoryTag String?  // Mobile, Web, B2B etc
+  serviceType String?  // WEBSITE_BUILD, FORM_INTEGRATION, CRM_INTEGRATION, AUTOMATION, VOICE_AI, LEAD_NURTURING, EMAIL_MARKETING
+  crmStage    String   @default("ONBOARDED") // ONBOARDED, SCOPING, BUILDING, REVIEW, LIVE
+  onboarded   Boolean  @default(false)
+  onboardedAt DateTime?
+  mrr         Float    @default(0) // monthly recurring revenue in USD
+  onboardingFee Float  @default(0) // one-time onboarding fee in USD; basis for sales commission
+  progress    Int      @default(0) // 0-100
+  dueDate     DateTime?
+  ownerId     String?
+  owner       User?    @relation("ProjectOwner", fields: [ownerId], references: [id])
+  projectManagerId String?
+  projectManager   User? @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  prd         String?
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+  tasks       Task[]
+  files       FileAsset[]
+  folders     Folder[]
+  comments    Comment[]
+  activities  Activity[]
+  tags        Tag[]
+  meetings    Meeting[]
+  invoices    Invoice[]
+  commissions Commission[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Meeting {
+  id              String   @id @default(cuid())
+  title           String
+  kind            String   @default("INTERNAL_CALL") // INTERNAL_CALL, CLIENT_STANDUP
+  startAt         DateTime
+  durationMinutes Int      @default(30)
+  notes           String?
+  teamId          String   @default("APPS") // APPS, CRM, SALES, GLOBAL
+  recurrence      String   @default("NONE") // NONE, DAILY, WEEKLY, BIWEEKLY, MONTHLY
+  recurrenceUntil DateTime?
+  includeClient   Boolean  @default(false)
+  ownerId         String?
+  owner           User?    @relation("MeetingOwner", fields: [ownerId], references: [id])
+  attendees       User[]   @relation("MeetingAttendees")
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([teamId, startAt])
+  @@index([projectId])
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("BACKLOG") // BACKLOG, RESEARCH, IN_PROGRESS, REVIEW, DONE
+  priority    String   @default("MEDIUM")
+  platformTag String?  // iOS, Desktop, Mobile, Web
+  progress    Int      @default(0)
+  dueDate     DateTime?
+  teamId      String   @default("APPS") // APPS, CRM, SALES
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTo  String?
+  assignee    User?    @relation("AssignedTasks", fields: [assignedTo], references: [id])
+  files       FileAsset[]
+  comments    Comment[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Lead {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  phone        String?
+  title        String?
+  location     String?
+  languages    String?
+  score        Int      @default(0)
+  status       String   @default("NEW") // NEW, CONTACTED, MEETING, PROPOSAL, READY_TO_CALL
+  source       String?  // Inbound, Cold Outreach, Referral
+  projectedValue Float?
+  probability  Int      @default(0)
+  nextAction   DateTime?
+  summary      String?  // AI contact summary
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id])
+  ghlContactId String?
+  assignedTo   String?
+  assignee     User?    @relation("AssignedLeads", fields: [assignedTo], references: [id])
+  activities   Activity[]
+  notes        Note[]
+
+  // Sales prospecting pipeline fields
+  // salesProjectId mirrors the current active LeadClaim.projectId (null = in open pool).
+  // Full claim history lives on LeadClaim.
+  salesProjectId     String?
+  salesProject       SalesProject? @relation("SalesProjectLeads", fields: [salesProjectId], references: [id], onDelete: SetNull)
+  niche              String?       // snapshotted on first discovery, drives open-pool matching
+  website            String?
+  address            String?
+  instagramHandle    String?
+  linkedinUrl        String?
+  facebookUrl        String?
+  twitterHandle      String?
+  googlePlaceId      String?
+  googleRating       Float?
+  googleReviewCount  Int?
+  qualified          Boolean  @default(false)
+  qualificationScore Int      @default(0)
+  qualificationReason String?
+  recommendedServices String? // JSON array
+  pipelinePhase      Int      @default(0) // highest completed phase (0-8)
+
+  // DBPR-licensed pipeline extras
+  licenseIssuedAt    DateTime? // "Original License Date" from the DBPR detail page
+  newlyLicensed      Boolean   @default(false) // true if licenseIssuedAt is within the last 90 days at deep-research time
+
+  persona        Persona?
+  outreaches     Outreach[]
+  preCallBrief   PreCallBrief?
+  proposals      Proposal[]
+  introOffers    IntroOffer[]
+  commissions    Commission[]
+  claims         LeadClaim[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([googlePlaceId])
+  @@index([phone])
+}
+
+model Deal {
+  id          String   @id @default(cuid())
+  name        String
+  stage       String   @default("QUALIFIED")
+  probability Int      @default(0)
+  value       Float    @default(0)
+  status      String   @default("HOT")
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+  files       FileAsset[]
+  folders     Folder[]
+  createdAt   DateTime @default(now())
+}
+
+model Folder {
+  id         String      @id @default(cuid())
+  name       String
+  color      String      @default("#7c3aed") // purple/blue/yellow/green
+  projectId  String?
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  dealId     String?
+  deal       Deal?       @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  files      FileAsset[]
+  createdAt  DateTime    @default(now())
+}
+
+model FileAsset {
+  id          String   @id @default(cuid())
+  name        String
+  format      String   // PDF, DOCX, PNG, MP4
+  url         String
+  sizeBytes   Int      @default(0)
+  isLink      Boolean  @default(false)
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id])
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  dealId      String?
+  deal        Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  uploadedBy  String?
+  uploader    User?    @relation("UploadedFiles", fields: [uploadedBy], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  body       String
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  taskId     String?
+  task       Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  kind        String   // CALL, MEETING, TASK, NOTE, EMAIL, SYSTEM
+  title       String
+  body        String?
+  teamId      String   @default("GLOBAL")
+  actorId     String?
+  actor       User?    @relation(fields: [actorId], references: [id])
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model Note {
+  id         String   @id @default(cuid())
+  body       String
+  pinned     Boolean  @default(false)
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model Tag {
+  id         String   @id @default(cuid())
+  label      String
+  color      String   @default("#4318ff")
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  number      String   @unique // e.g. INV-0001
+  description String?
+  amount      Float    // total in USD
+  status      String   @default("DRAFT") // DRAFT, SENT, PAID, OVERDUE, VOID
+  dueDate     DateTime
+  paidAt      DateTime?
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  entityName  String?  // client/brand the campaign is for
+  description String?
+  funnelUrl   String?
+  websiteUrl  String?
+  status      String   @default("ACTIVE") // ACTIVE, PAUSED, ARCHIVED
+  service     String?  // GHL Automation, Voice AI, Website Build, Email Marketing, Paid Ads, Social, SEO
+  niche       String?  // Auto Dealers, Dental, Fitness, Real Estate, Legal, HVAC, Roofing, Restaurants, etc
+  coverColor  String   @default("#ec4899")
+  ownerId     String?
+  owner       User?    @relation("CampaignOwner", fields: [ownerId], references: [id])
+  tags        CampaignTag[]
+  links       CampaignLink[]
+  files       FileAsset[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CampaignLink {
+  id          String   @id @default(cuid())
+  label       String
+  url         String
+  kind        String   @default("FUNNEL") // FUNNEL, AD, LANDING, OTHER
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model CampaignTag {
+  id          String    @id @default(cuid())
+  label       String
+  color       String    @default("#ec4899")
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contacts    Contact[] @relation("ContactCampaignTags")
+  createdAt   DateTime  @default(now())
+}
+
+// ── Sales Prospecting Pipeline ──────────────────────────────────
+
+model SalesProject {
+  id              String    @id @default(cuid())
+  name            String
+  niche           String
+  targetLocation  String
+  targetLeadCount Int
+  status          String    @default("CREATED") // CREATED, DISCOVERING, AWAITING_DEEP_RESEARCH, ENRICHING, RESEARCHING, QUALIFYING, GENERATING, COMPLETE
+  currentPhase    Int       @default(1)
+  discoveredCount Int       @default(0)
+  qualifiedCount  Int       @default(0)
+  completedAt     DateTime?
+  // Path the kickoff took. GOOGLE_GENERAL = niche + zip/city (existing flow).
+  // DBPR_LICENSED = state-licensed contractor/supplier roster, then deep research.
+  source          String    @default("GOOGLE_GENERAL") // GOOGLE_GENERAL, DBPR_LICENSED
+  // Filters captured at kickoff for the licensed path (boardCode, licenseTypeCode,
+  // countyCode, searchKind: "contractor" | "supplier"). Null on the Google path.
+  dbprFilters     Json?
+  createdBy       String
+  creator         User      @relation("CreatedSalesProjects", fields: [createdBy], references: [id])
+  leads           Lead[]    @relation("SalesProjectLeads")
+  claims          LeadClaim[] @relation("ProjectClaims")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Claim log — one row per time a Lead was pulled into a project.
+// Active claim = `releasedAt IS NULL`. At most one active claim per Lead
+// (enforced at application level — SQLite doesn't support partial unique).
+// When the owning project is deleted, projectId becomes null but
+// projectNameSnapshot preserves history for the contact timeline.
+model LeadClaim {
+  id                  String        @id @default(cuid())
+  leadId              String
+  lead                Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  projectId           String?
+  project             SalesProject? @relation("ProjectClaims", fields: [projectId], references: [id], onDelete: SetNull)
+  projectNameSnapshot String
+  claimedByUserId     String?
+  claimedBy           User?         @relation("ClaimedLeads", fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  claimedByNameSnapshot String?
+  claimedAt           DateTime      @default(now())
+  releasedAt          DateTime?
+  releaseReason       String?       // COOLDOWN_EXPIRED, MANUAL_RELEASE, PROJECT_DELETED
+  lastActivityAt      DateTime      @default(now())
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([leadId, releasedAt])
+  @@index([projectId])
+  @@index([releasedAt, lastActivityAt])
+}
+
+model Persona {
+  id                 String   @id @default(cuid())
+  leadId             String   @unique
+  lead               Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  businessSummary    String?
+  digitalPresence    String?  // JSON: website quality, social media, SEO, Google Business
+  decisionMakerName  String?
+  decisionMakerTitle String?
+  decisionMakerStyle String?
+  painPoints         String?  // JSON array
+  opportunities      String?  // JSON array
+  competitors        String?  // JSON array
+  challenges         String?  // JSON array
+  toolsUsed          String?  // JSON array
+  estimatedAge       String?
+  demographics       String?
+  rawAnalysis        String?  // Full AI response
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Outreach {
+  id           String    @id @default(cuid())
+  leadId       String
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  platform     String    // INSTAGRAM, LINKEDIN, FACEBOOK, TWITTER, SMS, EMAIL
+  type         String    // INTRO, FOLLOW_UP
+  subject      String?   // email only
+  body         String
+  status       String    @default("DRAFT") // DRAFT, SENT, REPLIED
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model PreCallBrief {
+  id                     String   @id @default(cuid())
+  leadId                 String   @unique
+  lead                   Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  headline               String?
+  talkingPoints          String?  // JSON array
+  recommendedServices    String?  // JSON array of { name, tier, reason }
+  openingLines           String?  // JSON array
+  qualificationQuestions String?  // JSON array
+  objectionHandlers      String?  // JSON: { objection: response }
+  pricingGuidance        String?  // JSON
+  roiProjections         String?  // JSON
+  callScript             String?
+  callNotes              String?  // Sales rep fills this in
+  callOutcome            String?  // INTERESTED, NOT_INTERESTED, CALLBACK, NO_ANSWER
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// ── Client-facing proposals (Rend3r pipeline) ──────────────────────────────────
+
+model Proposal {
+  id                String   @id @default(cuid())
+  token             String   @unique // public, unguessable; used in /p/[token]
+  leadId            String
+  lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdById       String
+  createdBy         User     @relation("CreatedProposals", fields: [createdById], references: [id])
+
+  // Lifecycle
+  status            String   @default("pending") // pending | researching | writing | rendering | polishing | ready | failed | sent | viewed | scheduled
+  stage             String?  // human-readable current stage (e.g. "Polishing mockup with gpt-image-1")
+  progress          Int      @default(0) // 0..100
+  errorMessage      String?
+  imageQuality      String   @default("hybrid") // hybrid | rend3r-only | openai-only
+
+  // Generated artifacts
+  proposalJson      String?  // ProposalJSON from src/lib/sales/proposal-schema.ts
+  rend3rHtml        String?  // Full single-file HTML from Rend3r
+  rend3rImageUrl    String?  // Puppeteer screenshot of the Rend3r HTML
+  mockupImageUrl    String?  // Final polished image (gpt-image-1 edit pass)
+  currentSiteUrl    String?  // Screenshot of the prospect's existing site (if any)
+
+  // Email
+  sentAt            DateTime?
+  sentToEmail       String?
+  emailMessageId    String?  // Resend message id
+
+  // Engagement
+  firstViewedAt     DateTime?
+  lastViewedAt      DateTime?
+  viewCount         Int      @default(0)
+  scheduledAt       DateTime? // client clicked the booking CTA
+
+  competitors       Competitor[]
+  views             ProposalView[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([status])
+}
+
+model Competitor {
+  id              String    @id @default(cuid())
+  proposalId      String
+  proposal        Proposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  name            String
+  url             String?
+  strengths       String?   // JSON array
+  weaknesses      String?   // JSON array
+  whyOutperforming String?  // narrative: why they likely beat the prospect
+  innovat3Angle   String?   // how INNOVAT3 services close the gap
+  rawResearch     String?   // full source citations / notes
+  createdAt       DateTime  @default(now())
+
+  @@index([proposalId])
+}
+
+// ── Cold-lead intro offer (24h, 25% off onboarding) ──────────────────────────
+//
+// Sent before any proposal is generated. The email links to /offer/[token]
+// (live countdown), which then forwards to the GHL scheduling link. When the
+// lead actually books, a webhook flips them to "warm" and triggers the full
+// proposal pipeline. No AI cost on this side of the funnel.
+
+model IntroOffer {
+  id              String    @id @default(cuid())
+  token           String    @unique // public, used in /offer/[token]
+  leadId          String
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sentByUserId    String
+  sentBy          User      @relation("SentIntroOffers", fields: [sentByUserId], references: [id])
+
+  sentAt          DateTime  @default(now())
+  expiresAt       DateTime  // sentAt + 24h by default
+  schedulingLink  String    // GHL link, with query params appended for attribution
+  sentToEmail     String
+
+  status          String    @default("active") // active | expired | redeemed
+  openedAt        DateTime? // landing page first-view
+  redeemedAt      DateTime? // booking webhook flipped this
+
+  emailMessageId  String?   // Resend message id
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([leadId])
+  @@index([status])
+}
+
+model ProposalView {
+  id          String    @id @default(cuid())
+  proposalId  String
+  proposal    Proposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  ipHash      String?   // hashed IP for unique-view counting without storing PII
+  userAgent   String?
+  referrer    String?
+  viewedAt    DateTime  @default(now())
+
+  @@index([proposalId])
+}
+
+// ── Sales time-tracking (for SALES role only) ────────────────────────────────
+// All dates stored UTC; `dateCST` / `weekOfCST` / `monthOfCST` are string keys
+// computed in Central Standard Time (UTC-6, no DST — all reps in Guatemala / El Salvador).
+// A WorkSession is bounded by one CST calendar day.
+
+model WorkSession {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation("UserWorkSessions", fields: [userId], references: [id], onDelete: Cascade)
+  dateCST        String   // YYYY-MM-DD (CST)
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  endReason      String?  // MANUAL_END, AUTO_MIDNIGHT, AUTO_INACTIVE_EOD
+  status         String   @default("ACTIVE") // ACTIVE, ON_BREAK, ENDED
+  lastActivityAt DateTime @default(now())
+  totalWorkMs    Int      @default(0) // cached from intervals when session ends
+  totalBreakMs   Int      @default(0)
+  breakCount     Int      @default(0)
+  intervals      SessionInterval[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, dateCST])
+  @@index([dateCST])
+  @@index([userId, startedAt])
+}
+
+model SessionInterval {
+  id         String      @id @default(cuid())
+  sessionId  String
+  session    WorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  kind       String      // WORK, BREAK
+  source     String      @default("SYSTEM") // SYSTEM (auto), USER (clicked button), BACKFILL (rep added after the fact)
+  startedAt  DateTime
+  endedAt    DateTime?
+  note       String?
+  createdAt  DateTime    @default(now())
+
+  @@index([sessionId, startedAt])
+}
+
+// ── Commissions & pricing config (admin-managed, versioned) ──────────────────
+
+model ServicePricing {
+  id              String   @id @default(cuid())
+  serviceType     String   // WEBSITE_BUILD, FORM_INTEGRATION, CRM_INTEGRATION, AUTOMATION, VOICE_AI, LEAD_NURTURING, EMAIL_MARKETING, OTHER
+  label           String
+  onboardingFee   Float    @default(0)
+  monthlyFee      Float    @default(0)
+  cost            Float    @default(0) // admin-only: our internal cost for margin tracking
+  effectiveFrom   DateTime @default(now())
+  effectiveTo     DateTime? // null = current active row
+  updatedById     String?
+  updatedBy       User?    @relation("UpdatedPricing", fields: [updatedById], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@index([serviceType, effectiveFrom])
+}
+
+model CommissionRate {
+  id            String   @id @default(cuid())
+  rate          Float    @default(0.20) // fraction: 0.20 = 20%
+  basis         String   @default("ONBOARDING") // ONBOARDING (default), ONBOARDING_PLUS_MRR_1 (reserved for future)
+  note          String?
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  updatedById   String?
+  updatedBy     User?    @relation("UpdatedRates", fields: [updatedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([effectiveFrom])
+}
+
+model Commission {
+  id               String   @id @default(cuid())
+  userId           String   // the sales rep earning the commission
+  user             User     @relation("UserCommissions", fields: [userId], references: [id])
+  contactId        String?
+  contact          Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId           String?
+  lead             Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  serviceType      String?
+  source           String?  // copied from Lead.source at close time
+  onboardingAmount Float    // snapshotted at earn time — pricing changes do not retro-affect
+  rate             Float    // snapshotted at earn time — rate changes do not retro-affect
+  commissionAmount Float    // = onboardingAmount * rate, stored for fast aggregation
+  earnedAt         DateTime @default(now())
+  dateCST          String   // YYYY-MM-DD in CST for daily rollups
+  weekOfCST        String   // YYYY-Www (ISO week) in CST for weekly rollups
+  monthOfCST       String   // YYYY-MM in CST for monthly rollups
+  status           String   @default("PENDING") // PENDING, PAID, VOID
+  paidAt           DateTime?
+  notes            String?
+  createdById      String
+  createdBy        User     @relation("CreatedCommissions", fields: [createdById], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, earnedAt])
+  @@index([weekOfCST])
+  @@index([monthOfCST])
+  @@index([status])
+}
